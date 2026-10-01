@@ -150,7 +150,7 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("ru-RU");
-  let session = null, journal = [];
+  let session = null, journal = [], options = [], lastAdded = null;
 
   // --- Сессия (пропуск после входа) хранится в браузере, чтобы не входить каждый раз ---
   function saveSession(s) {
@@ -374,7 +374,10 @@
   $("logoutBtn").addEventListener("click", async () => {
     const s = session;
     saveSession(null);
-    journal = [];
+    journal = []; options = []; lastAdded = null;
+    $("gradeForm").hidden = true;
+    $("gradeForm").reset();
+    $("gfMsg").textContent = "";
     $("q").value = "";
     showLogin();
     if (s) fetch(`${SUPABASE_URL}/auth/v1/logout`, {
