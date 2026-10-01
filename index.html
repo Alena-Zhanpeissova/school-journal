@@ -192,6 +192,25 @@
     return res.json();
   }
 
+  // Новая оценка пишется прямо в таблицу grades. Пустит её туда или нет,
+  // решают правила RLS в базе («Оценки: ставит учитель»), а не эта страница.
+  async function addGrade(row) {
+    const s = await freshSession();
+    if (!s) throw Object.assign(new Error("нужно войти"), { status: 401 });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/grades`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}`,
+                 "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify(row)
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const denied = res.status === 403 || data.code === "42501";
+      throw Object.assign(new Error(denied ? "у вас нет прав поставить эту оценку" : (data.message || `код ${res.status}`)),
+                          { status: res.status });
+    }
+  }
+
   // --- Экраны ---
   function showLogin(message = "") {
     $("loading").hidden = true;
@@ -218,6 +237,8 @@
       fillSelect($("cls"), journal.map(r => r.class_name));
       fillSelect($("subj"), journal.map(r => r.subject));
       render();
+      options = profile.role === "teacher" ? await rpc("my_grade_options") : [];
+      setupGradeForm();
       $("loading").hidden = true;
       $("journalView").hidden = false;
     } catch (e) {
@@ -245,12 +266,92 @@
     $("stats").innerHTML = `<span>Оценок: <b>${list.length}</b></span>
       <span>Учеников: <b>${students}</b></span><span>Средний балл: <b>${avg}</b></span>`;
 
+    let marked = false;
+    const isFresh = r => !marked && lastAdded && r.student === lastAdded.student && r.subject === lastAdded.subject
+                         && r.given_on === lastAdded.given_on && r.grade === lastAdded.grade && (marked = true);
     $("rows").innerHTML = list.length
-      ? list.map(r => `<tr>
+      ? list.map(r => `<tr${isFresh(r) ? ' class="fresh"' : ""}>
           <td>${fmtDate(r.given_on)}</td><td>${esc(r.student)}</td><td>${esc(r.class_name)}</td>
           <td>${esc(r.subject)}</td><td><span class="grade g${r.grade}">${r.grade}</span></td></tr>`).join("")
       : `<tr><td colspan="5" class="msg">Ничего не найдено</td></tr>`;
   }
+
+  // --- Форма оценки (только учитель) ---
+  const today = () => new Date().toLocaleDateString("sv-SE");   // ГГГГ-ММ-ДД по местному времени
+
+  function setupGradeForm() {
+    const form = $("gradeForm");
+    form.hidden = options.length === 0;
+    if (form.hidden) return;
+
+    const sel = $("gfStudent");
+    const keep = sel.value;
+    sel.length = 0;
+    sel.add(new Option("Выберите ученика", ""));
+    const byClass = {};
+    options.forEach(o => { (byClass[o.class_name] ??= new Map()).set(o.student_id, o.student); });
+    Object.keys(byClass).sort((a, b) => a.localeCompare(b, "ru")).forEach(cls => {
+      const group = document.createElement("optgroup");
+      group.label = `${cls} класс`;
+      [...byClass[cls]].forEach(([id, name]) => group.append(new Option(name, id)));
+      sel.append(group);
+    });
+    sel.value = keep;
+    fillSubjects();
+    $("gfDate").max = today();
+    if (!$("gfDate").value) $("gfDate").value = today();
+  }
+
+  function fillSubjects() {
+    const sid = Number($("gfStudent").value);
+    const subs = options.filter(o => o.student_id === sid);
+    const el = $("gfSubject"), keep = el.value;
+    el.length = 0;
+    if (!sid) el.add(new Option("Сначала выберите ученика", ""));
+    subs.forEach(o => el.add(new Option(o.subject, o.subject_id)));
+    if ([...el.options].some(o => o.value === keep)) el.value = keep;
+  }
+
+  function gfMessage(text, ok) {
+    $("gfMsg").textContent = text;
+    $("gfMsg").className = "gf-msg " + (ok ? "ok" : "err");
+  }
+
+  $("gfStudent").addEventListener("change", fillSubjects);
+
+  $("gradeForm").addEventListener("change", e => {
+    if (e.target.name === "gfValue" && e.target.value === "2")
+      gfMessage("После двойки родителям автоматически уйдёт сообщение в Telegram.", false);
+    else if (e.target.name === "gfValue") gfMessage("", true);
+  });
+
+  $("gradeForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const sid = Number($("gfStudent").value), subId = Number($("gfSubject").value);
+    const opt = options.find(o => o.student_id === sid && o.subject_id === subId);
+    const value = Number(new FormData(e.target).get("gfValue"));
+    const date = $("gfDate").value;
+    if (!opt) return gfMessage("Выберите ученика и предмет.", false);
+    if (!value) return gfMessage("Выберите оценку.", false);
+    if (!date || date > today()) return gfMessage("Дата не может быть в будущем.", false);
+
+    $("gfBtn").disabled = true;
+    try {
+      await addGrade({ student_id: sid, subject_id: subId, teacher_id: opt.teacher_id, value, given_on: date });
+      lastAdded = { student: opt.student, subject: opt.subject, given_on: date, grade: value };
+      journal = await rpc("get_journal");
+      fillSelect($("cls"), journal.map(r => r.class_name));
+      fillSelect($("subj"), journal.map(r => r.subject));
+      render();
+      gfMessage(`Поставлена ${value} по предмету «${opt.subject}»: ${opt.student}, ${fmtDate(date)}.`, true);
+      e.target.querySelectorAll('input[name="gfValue"]').forEach(r => r.checked = false);
+    } catch (err) {
+      if (err.status === 401) { saveSession(null); return showLogin("Время входа истекло, войдите снова."); }
+      gfMessage(`Оценка не поставлена: ${err.message}.`, false);
+    } finally {
+      $("gfBtn").disabled = false;
+    }
+  });
 
   // --- Кнопки ---
   $("loginForm").addEventListener("submit", async e => {
