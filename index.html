@@ -7,26 +7,45 @@
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
-    --accent: #2f5bd3; --g5: #1f9d55; --g4: #3b82f6; --g3: #d97706; --g2: #dc2626;
+    --accent: #2f5bd3; --accent-text: #ffffff; --g5: #1f9d55; --g4: #3b82f6; --g3: #d97706; --g2: #dc2626;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #14161b; --card: #1d2027; --text: #e7e9ee; --muted: #9aa1ad; --line: #2c3039; --accent: #7aa2ff; }
+    :root { --bg: #14161b; --card: #1d2027; --text: #e7e9ee; --muted: #9aa1ad; --line: #2c3039; --accent: #7aa2ff; --accent-text: #10131a; }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { margin: 0 0 4px; font-size: 26px; }
   .sub { color: var(--muted); margin: 0 0 20px; }
-  .filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  input, select, button { font: inherit; }
   input, select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
-                  background: var(--card); color: var(--text); font: inherit; }
+                  background: var(--card); color: var(--text); }
+  button { padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text);
+           font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button:disabled { opacity: .6; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .login { max-width: 360px; margin: 8vh auto 0; background: var(--card); border: 1px solid var(--line);
+           border-radius: 12px; padding: 24px; display: grid; gap: 12px; }
+  .login h1 { font-size: 22px; }
+  .login label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .login .err { min-height: 1.2em; }
+
+  .who { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+         background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
+  .who b { display: block; }
+  .who span { color: var(--muted); font-size: 14px; }
+
+  .filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
   .stats { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); margin-bottom: 10px; font-size: 14px; }
   .stats b { color: var(--text); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th { font-size: 13px; color: var(--muted); font-weight: 600; background: var(--card); position: sticky; top: 0; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; }
   tr:last-child td { border-bottom: 0; }
   .grade { display: inline-block; min-width: 28px; text-align: center; padding: 2px 8px; border-radius: 6px;
            color: #fff; font-weight: 700; }
@@ -41,38 +60,135 @@
 </head>
 <body>
 <main>
-  <h1>Электронный журнал</h1>
-  <p class="sub">Оценки учеников по предметам. Данные из учебной базы «Школа», только для просмотра.</p>
+  <!-- Вход -->
+  <form id="loginForm" class="login" hidden>
+    <h1>Электронный журнал</h1>
+    <p class="sub" style="margin:0">Войдите, чтобы увидеть оценки.</p>
+    <label>Логин <input id="login" autocomplete="username" required></label>
+    <label>Пароль <input id="password" type="password" autocomplete="current-password" required></label>
+    <button id="loginBtn" type="submit">Войти</button>
+    <div id="loginErr" class="err" role="alert"></div>
+  </form>
 
-  <div class="filters">
-    <input id="q" type="search" placeholder="Поиск по фамилии или имени">
-    <select id="cls"><option value="">Все классы</option></select>
-    <select id="subj"><option value="">Все предметы</option></select>
-  </div>
+  <!-- Журнал -->
+  <section id="journalView" hidden>
+    <h1>Электронный журнал</h1>
+    <p class="sub">Оценки из учебной базы «Школа», только для просмотра.</p>
 
-  <div class="stats" id="stats"></div>
+    <div class="who">
+      <div><b id="whoName"></b><span id="whoScope"></span></div>
+      <button id="logoutBtn" class="ghost" type="button">Выйти</button>
+    </div>
 
-  <div class="card">
-    <table>
-      <thead><tr><th>Дата</th><th>Ученик</th><th>Класс</th><th>Предмет</th><th>Оценка</th></tr></thead>
-      <tbody id="rows"><tr><td colspan="5" class="msg">Загружаю журнал…</td></tr></tbody>
-    </table>
-  </div>
+    <div class="filters">
+      <input id="q" type="search" placeholder="Поиск по фамилии или имени">
+      <select id="cls"><option value="">Все классы</option></select>
+      <select id="subj"><option value="">Все предметы</option></select>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="card">
+      <table>
+        <thead><tr><th>Дата</th><th>Ученик</th><th>Класс</th><th>Предмет</th><th>Оценка</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p id="loading" class="msg">Загружаю…</p>
 </main>
 
 <script>
   // Адрес базы и ПУБЛИЧНЫЙ ключ. Секретный ключ сюда не кладём никогда.
-  // Публичному ключу в базе разрешено только одно: прочитать журнал (функция get_journal).
+  // Без входа публичный ключ в базе не видит ничего. После входа база сама решает,
+  // какие оценки показать: родителю оценки его детей, учителю оценки по его предметам.
   const SUPABASE_URL = "https://xjttipwrindzobwnbdnw.supabase.co";
   const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_SxS_yTWNTwUx1_enK5q3RQ_HYaQOAwG";
+  const LOGIN_DOMAIN = "school.test";   // логин volkova = учётная запись volkova@school.test
+  const SESSION_KEY = "journal-session";
 
   const $ = id => document.getElementById(id);
-  let journal = [];
-
-  const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("ru-RU");
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("ru-RU");
+  let session = null, journal = [];
+
+  // --- Сессия (пропуск после входа) хранится в браузере, чтобы не входить каждый раз ---
+  function saveSession(s) {
+    session = s;
+    try { s ? localStorage.setItem(SESSION_KEY, JSON.stringify(s)) : localStorage.removeItem(SESSION_KEY); } catch {}
+  }
+  function loadSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+  }
+
+  async function auth(grant, body) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${grant}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error_description || data.msg || `код ${res.status}`), { status: res.status });
+    return { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: data.expires_at };
+  }
+
+  async function freshSession() {
+    if (session && session.expires_at - 60 < Date.now() / 1000) {
+      try { saveSession(await auth("refresh_token", { refresh_token: session.refresh_token })); }
+      catch { saveSession(null); }
+    }
+    return session;
+  }
+
+  async function rpc(name) {
+    const s = await freshSession();
+    if (!s) throw Object.assign(new Error("нужно войти"), { status: 401 });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}`, "Content-Type": "application/json" },
+      body: "{}"
+    });
+    if (!res.ok) throw Object.assign(new Error(`база ответила кодом ${res.status}`), { status: res.status });
+    return res.json();
+  }
+
+  // --- Экраны ---
+  function showLogin(message = "") {
+    $("loading").hidden = true;
+    $("journalView").hidden = true;
+    $("loginForm").hidden = false;
+    $("loginErr").textContent = message;
+    $("login").focus();
+  }
+
+  async function showJournal() {
+    $("loginForm").hidden = true;
+    $("loading").hidden = false;
+    try {
+      const [profile] = await rpc("my_profile");
+      journal = await rpc("get_journal");
+      if (!profile) {
+        saveSession(null);
+        return showLogin("Эта учётная запись не привязана ни к родителю, ни к учителю.");
+      }
+      $("whoName").textContent = profile.full_name;
+      $("whoScope").textContent = profile.role === "parent"
+        ? `Родитель. Дети: ${profile.scope || "не указаны"}`
+        : `Учитель. Предмет: ${profile.scope || "не указан"}`;
+      fillSelect($("cls"), journal.map(r => r.class_name));
+      fillSelect($("subj"), journal.map(r => r.subject));
+      render();
+      $("loading").hidden = true;
+      $("journalView").hidden = false;
+    } catch (e) {
+      if (e.status === 401) { saveSession(null); return showLogin("Время входа истекло, войдите снова."); }
+      $("loading").innerHTML = `<span class="err">Не удалось загрузить журнал: ${esc(e.message)}</span>`;
+    }
+  }
 
   function fillSelect(el, values) {
+    el.length = 1;
     [...new Set(values)].filter(Boolean).sort((a, b) => a.localeCompare(b, "ru"))
       .forEach(v => el.add(new Option(v, v)));
   }
@@ -97,25 +213,39 @@
       : `<tr><td colspan="5" class="msg">Ничего не найдено</td></tr>`;
   }
 
-  async function load() {
+  // --- Кнопки ---
+  $("loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const login = $("login").value.trim().toLowerCase();
+    const email = login.includes("@") ? login : `${login}@${LOGIN_DOMAIN}`;
+    $("loginBtn").disabled = true;
+    $("loginErr").textContent = "";
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_journal`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
-        body: "{}"
-      });
-      if (!res.ok) throw new Error(`база ответила кодом ${res.status}`);
-      journal = await res.json();
-      fillSelect($("cls"), journal.map(r => r.class_name));
-      fillSelect($("subj"), journal.map(r => r.subject));
-      render();
-    } catch (e) {
-      $("rows").innerHTML = `<tr><td colspan="5" class="msg err">Не удалось загрузить журнал: ${esc(e.message)}</td></tr>`;
+      saveSession(await auth("password", { email, password: $("password").value }));
+      $("password").value = "";
+      await showJournal();
+    } catch (err) {
+      $("loginErr").textContent = err.status === 400 ? "Неверный логин или пароль." : `Не удалось войти: ${err.message}`;
+    } finally {
+      $("loginBtn").disabled = false;
     }
-  }
+  });
+
+  $("logoutBtn").addEventListener("click", async () => {
+    const s = session;
+    saveSession(null);
+    journal = [];
+    $("q").value = "";
+    showLogin();
+    if (s) fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST", headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}` }
+    }).catch(() => {});
+  });
 
   ["q", "cls", "subj"].forEach(id => $(id).addEventListener("input", render));
-  load();
+
+  session = loadSession();
+  session ? showJournal() : showLogin();
 </script>
 </body>
 </html>
