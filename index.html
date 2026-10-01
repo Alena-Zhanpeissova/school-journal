@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Электронный журнал</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2f5bd3; --g5: #1f9d55; --g4: #3b82f6; --g3: #d97706; --g2: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161b; --card: #1d2027; --text: #e7e9ee; --muted: #9aa1ad; --line: #2c3039; --accent: #7aa2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  input, select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+                  background: var(--card); color: var(--text); font: inherit; }
+  .stats { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); margin-bottom: 10px; font-size: 14px; }
+  .stats b { color: var(--text); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; background: var(--card); position: sticky; top: 0; }
+  tr:last-child td { border-bottom: 0; }
+  .grade { display: inline-block; min-width: 28px; text-align: center; padding: 2px 8px; border-radius: 6px;
+           color: #fff; font-weight: 700; }
+  .g5 { background: var(--g5); } .g4 { background: var(--g4); } .g3 { background: var(--g3); } .g2 { background: var(--g2); }
+  .msg { padding: 28px; text-align: center; color: var(--muted); }
+  .err { color: var(--g2); }
+  @media (max-width: 640px) {
+    .filters { grid-template-columns: 1fr; }
+    th, td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Электронный журнал</h1>
+  <p class="sub">Оценки учеников по предметам. Данные из учебной базы «Школа», только для просмотра.</p>
+
+  <div class="filters">
+    <input id="q" type="search" placeholder="Поиск по фамилии или имени">
+    <select id="cls"><option value="">Все классы</option></select>
+    <select id="subj"><option value="">Все предметы</option></select>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Дата</th><th>Ученик</th><th>Класс</th><th>Предмет</th><th>Оценка</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="5" class="msg">Загружаю журнал…</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+  // Адрес базы и ПУБЛИЧНЫЙ ключ. Секретный ключ сюда не кладём никогда.
+  // Публичному ключу в базе разрешено только одно: прочитать журнал (функция get_journal).
+  const SUPABASE_URL = "https://xjttipwrindzobwnbdnw.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_SxS_yTWNTwUx1_enK5q3RQ_HYaQOAwG";
+
+  const $ = id => document.getElementById(id);
+  let journal = [];
+
+  const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString("ru-RU");
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function fillSelect(el, values) {
+    [...new Set(values)].filter(Boolean).sort((a, b) => a.localeCompare(b, "ru"))
+      .forEach(v => el.add(new Option(v, v)));
+  }
+
+  function render() {
+    const q = $("q").value.trim().toLowerCase();
+    const cls = $("cls").value, subj = $("subj").value;
+    const list = journal.filter(r =>
+      (!q || r.student.toLowerCase().includes(q)) &&
+      (!cls || r.class_name === cls) &&
+      (!subj || r.subject === subj));
+
+    const avg = list.length ? (list.reduce((s, r) => s + r.grade, 0) / list.length).toFixed(2) : "–";
+    const students = new Set(list.map(r => r.student)).size;
+    $("stats").innerHTML = `<span>Оценок: <b>${list.length}</b></span>
+      <span>Учеников: <b>${students}</b></span><span>Средний балл: <b>${avg}</b></span>`;
+
+    $("rows").innerHTML = list.length
+      ? list.map(r => `<tr>
+          <td>${fmtDate(r.given_on)}</td><td>${esc(r.student)}</td><td>${esc(r.class_name)}</td>
+          <td>${esc(r.subject)}</td><td><span class="grade g${r.grade}">${r.grade}</span></td></tr>`).join("")
+      : `<tr><td colspan="5" class="msg">Ничего не найдено</td></tr>`;
+  }
+
+  async function load() {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_journal`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
+        body: "{}"
+      });
+      if (!res.ok) throw new Error(`база ответила кодом ${res.status}`);
+      journal = await res.json();
+      fillSelect($("cls"), journal.map(r => r.class_name));
+      fillSelect($("subj"), journal.map(r => r.subject));
+      render();
+    } catch (e) {
+      $("rows").innerHTML = `<tr><td colspan="5" class="msg err">Не удалось загрузить журнал: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  ["q", "cls", "subj"].forEach(id => $(id).addEventListener("input", render));
+  load();
+</script>
+</body>
+</html>
