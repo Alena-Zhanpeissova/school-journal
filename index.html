@@ -52,7 +52,25 @@
   .g5 { background: var(--g5); } .g4 { background: var(--g4); } .g3 { background: var(--g3); } .g2 { background: var(--g2); }
   .msg { padding: 28px; text-align: center; color: var(--muted); }
   .err { color: var(--g2); }
+  .gradeForm { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+               margin-bottom: 16px; display: grid; gap: 12px; }
+  .gradeForm h2 { margin: 0; font-size: 16px; }
+  .gf-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+  .gf-row label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .gf-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .marks { border: 0; padding: 0; margin: 0; display: flex; gap: 8px; align-items: center; }
+  .marks legend { font-size: 13px; color: var(--muted); padding: 0; margin-bottom: 4px; }
+  .marks label { display: block; cursor: pointer; }
+  .marks input { position: absolute; opacity: 0; pointer-events: none; }
+  .marks span { display: inline-block; width: 42px; padding: 7px 0; text-align: center; border-radius: 8px;
+                font-weight: 700; color: #fff; opacity: .35; }
+  .marks input:checked + span { opacity: 1; outline: 2px solid var(--text); outline-offset: 2px; }
+  .marks input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .gf-msg { font-size: 14px; min-height: 1.2em; }
+  .gf-msg.ok { color: var(--g5); }
+  tr.fresh td { background: color-mix(in srgb, var(--g5) 14%, transparent); }
   @media (max-width: 640px) {
+    .gf-row { grid-template-columns: 1fr; }
     .filters { grid-template-columns: 1fr; }
     th, td { padding: 8px 10px; }
   }
@@ -73,12 +91,33 @@
   <!-- Журнал -->
   <section id="journalView" hidden>
     <h1>Электронный журнал</h1>
-    <p class="sub">Оценки из учебной базы «Школа», только для просмотра.</p>
+    <p class="sub">Оценки из учебной базы «Школа».</p>
 
     <div class="who">
       <div><b id="whoName"></b><span id="whoScope"></span></div>
       <button id="logoutBtn" class="ghost" type="button">Выйти</button>
     </div>
+
+    <!-- Форма оценки: видна только учителю -->
+    <form id="gradeForm" class="gradeForm" hidden>
+      <h2>Поставить оценку</h2>
+      <div class="gf-row">
+        <label class="gf-student">Ученик <select id="gfStudent" required></select></label>
+        <label>Предмет <select id="gfSubject" required></select></label>
+        <label>Дата <input id="gfDate" type="date" required></label>
+      </div>
+      <div class="gf-row gf-bottom">
+        <fieldset class="marks">
+          <legend>Оценка</legend>
+          <label><input type="radio" name="gfValue" value="5" required><span class="g5">5</span></label>
+          <label><input type="radio" name="gfValue" value="4"><span class="g4">4</span></label>
+          <label><input type="radio" name="gfValue" value="3"><span class="g3">3</span></label>
+          <label><input type="radio" name="gfValue" value="2"><span class="g2">2</span></label>
+        </fieldset>
+        <button id="gfBtn" type="submit">Поставить</button>
+      </div>
+      <div id="gfMsg" class="gf-msg" role="status"></div>
+    </form>
 
     <div class="filters">
       <input id="q" type="search" placeholder="Поиск по фамилии или имени">
