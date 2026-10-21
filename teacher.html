@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Кабинет учителя</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2f5bd3; --accent-text: #ffffff; --g2: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161b; --card: #1d2027; --text: #e7e9ee; --muted: #9aa1ad; --line: #2c3039; --accent: #7aa2ff; --accent-text: #10131a; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  input, button { font: inherit; }
+  input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+          background: var(--card); color: var(--text); }
+  button { padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text);
+           font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button:disabled { opacity: .6; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .login { max-width: 360px; margin: 8vh auto 0; background: var(--card); border: 1px solid var(--line);
+           border-radius: 12px; padding: 24px; display: grid; gap: 12px; }
+  .login h1 { font-size: 22px; }
+  .login label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .login .err { min-height: 1.2em; }
+  .err { color: var(--g2); }
+
+  .who { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+         background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
+  .who b { display: block; }
+  .who span { color: var(--muted); font-size: 14px; }
+  .msg { padding: 28px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <!-- Вход -->
+  <form id="loginForm" class="login" hidden>
+    <h1>Кабинет учителя</h1>
+    <p class="sub" style="margin:0">Войдите по логину или почте и паролю.</p>
+    <label>Логин или почта <input id="login" autocomplete="username" autocapitalize="none" required></label>
+    <label>Пароль <input id="password" type="password" autocomplete="current-password" required></label>
+    <button id="loginBtn" type="submit">Войти</button>
+    <div id="loginErr" class="err" role="alert"></div>
+  </form>
+
+  <!-- Кабинет: показывается только после проверки в базе, что вошёл учитель -->
+  <section id="cabinetView" hidden>
+    <h1>Кабинет учителя</h1>
+    <p class="sub">Электронный журнал, учебная база «Школа».</p>
+    <div class="who">
+      <div><b id="whoName"></b><span id="whoScope"></span></div>
+      <button id="logoutBtn" class="ghost" type="button">Выйти</button>
+    </div>
+  </section>
+
+  <p id="loading" class="msg">Загружаю…</p>
+</main>
+
+<script>
+  // Адрес базы и ПУБЛИЧНЫЙ ключ. Секретный ключ сюда не кладём никогда.
+  // Кто вошёл, учитель или нет, решает база (функция my_profile по учётной записи),
+  // а не эта страница: подмена чего-либо в браузере кабинет не откроет.
+  const SUPABASE_URL = "https://xjttipwrindzobwnbdnw.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_SxS_yTWNTwUx1_enK5q3RQ_HYaQOAwG";
+  const LOGIN_DOMAIN = "school.test";   // логин petrov = учётная запись petrov@school.test
+  const SESSION_KEY = "cabinet-session";
+
+  const $ = id => document.getElementById(id);
+  let session = null;
+
+  // --- Сессия (пропуск после входа) хранится в браузере, чтобы не входить каждый раз ---
+  function saveSession(s) {
+    session = s;
+    try { s ? localStorage.setItem(SESSION_KEY, JSON.stringify(s)) : localStorage.removeItem(SESSION_KEY); } catch {}
+  }
+  function loadSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+  }
+
+  async function auth(grant, body) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${grant}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error_description || data.msg || `код ${res.status}`), { status: res.status });
+    return { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: data.expires_at };
+  }
+
+  async function freshSession() {
+    if (session && session.expires_at - 60 < Date.now() / 1000) {
+      try { saveSession(await auth("refresh_token", { refresh_token: session.refresh_token })); }
+      catch { saveSession(null); }
+    }
+    return session;
+  }
+
+  async function rpc(name) {
+    const s = await freshSession();
+    if (!s) throw Object.assign(new Error("нужно войти"), { status: 401 });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}`, "Content-Type": "application/json" },
+      body: "{}"
+    });
+    if (!res.ok) throw Object.assign(new Error(`база ответила кодом ${res.status}`), { status: res.status });
+    return res.json();
+  }
+
+  // Закрывает пропуск и на стороне базы, чтобы он нигде больше не работал.
+  function serverLogout(s) {
+    if (!s) return;
+    fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST", keepalive: true,
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}` }
+    }).catch(() => {});
+  }
+
+  // --- Экраны ---
+  function showLogin(message = "") {
+    $("loading").hidden = true;
+    $("cabinetView").hidden = true;
+    $("whoName").textContent = "";
+    $("whoScope").textContent = "";
+    $("loginForm").hidden = false;
+    $("loginErr").textContent = message;
+    $("login").focus();
+  }
+
+  async function showCabinet() {
+    $("loginForm").hidden = true;
+    $("cabinetView").hidden = true;
+    $("loading").hidden = false;
+    $("loading").textContent = "Загружаю…";
+    try {
+      const profile = (await rpc("my_profile")).find(p => p.role === "teacher");
+      if (!profile) {
+        // Вошёл не учитель (родитель или учётка без привязки): кабинет закрыт, пропуск закрываем.
+        serverLogout(session);
+        saveSession(null);
+        return showLogin("Кабинет только для учителей.");
+      }
+      $("whoName").textContent = profile.full_name;
+      $("whoScope").textContent = `Предмет: ${profile.scope || "не указан"}`;
+      $("loading").hidden = true;
+      $("cabinetView").hidden = false;
+    } catch (e) {
+      if (e.status === 401) { saveSession(null); return showLogin("Время входа истекло, войдите снова."); }
+      $("loading").textContent = `Не удалось открыть кабинет: ${e.message}`;
+      $("loading").className = "msg err";
+    }
+  }
+
+  // --- Кнопки ---
+  $("loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const login = $("login").value.trim().toLowerCase();
+    const email = login.includes("@") ? login : `${login}@${LOGIN_DOMAIN}`;
+    $("loginBtn").disabled = true;
+    $("loginErr").textContent = "";
+    try {
+      saveSession(await auth("password", { email, password: $("password").value }));
+      $("password").value = "";
+      await showCabinet();
+    } catch (err) {
+      // Одно и то же сообщение для неверного логина и неверного пароля.
+      $("loginErr").textContent = err.status === 400 ? "Неверный логин или пароль." : `Не удалось войти: ${err.message}`;
+    } finally {
+      $("loginBtn").disabled = false;
+    }
+  });
+
+  $("logoutBtn").addEventListener("click", () => {
+    const s = session;
+    saveSession(null);
+    showLogin();
+    serverLogout(s);
+  });
+
+  // Кнопка «Назад» может вернуть страницу из памяти браузера: заново проверяем, вошёл ли кто-то.
+  function start() {
+    session = loadSession();
+    session ? showCabinet() : showLogin();
+  }
+  window.addEventListener("pageshow", e => { if (e.persisted) start(); });
+  start();
+</script>
+</body>
+</html>
