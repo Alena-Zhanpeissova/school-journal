@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Кабинет учителя</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2f5bd3; --accent-hover: #2549ad; --accent-text: #ffffff; --accent-soft: #e4ebfb;
+    --danger: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161b; --card: #1d2027; --text: #e7e9ee; --muted: #9aa1ad; --line: #2c3039;
+            --accent: #7aa2ff; --accent-hover: #9bb8ff; --accent-text: #10131a; --accent-soft: #26304a;
+            --danger: #f87171; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  input, button { font: inherit; }
+  input { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px;
+          background: var(--card); color: var(--text); }
+  button { height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent);
+           color: var(--accent-text); font-weight: 600; cursor: pointer; }
+  button:hover { background: var(--accent-hover); }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); height: 34px; font-size: 14px; }
+  button.ghost:hover { background: var(--accent-soft); }
+  button:disabled { opacity: .6; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); }
+
+  .login { max-width: 360px; margin: 8vh auto 0; background: var(--card); border: 1px solid var(--line);
+           border-radius: 12px; padding: 28px 24px; display: grid; gap: 14px; }
+  .brand { text-align: center; }
+  .logo { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: var(--accent-text);
+          display: inline-flex; align-items: center; justify-content: center; }
+  .brand h1 { margin: 10px 0 2px; font-size: 20px; }
+  .brand p { margin: 0; font-size: 13px; color: var(--muted); }
+  .login label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .err { color: var(--danger); font-size: 14px; min-height: 1.3em; margin: 0; }
+  .err a { font-weight: 600; }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin: 0; }
+
+  .who { display: flex; align-items: center; gap: 12px; background: var(--card);
+         border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+            display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; flex: none; }
+  .who-text { flex: 1; min-width: 0; }
+  .who-text b { display: block; line-height: 1.3; }
+  .who-text span { color: var(--muted); font-size: 13px; }
+  .stub { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 28px 20px;
+          text-align: center; color: var(--muted); }
+  .stub p { margin: 0 0 12px; }
+  .msg { padding: 28px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <form id="loginForm" class="login" hidden novalidate>
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 9 12 4 2 9l10 5 10-5z"/><path d="M6 11.5V16c0 1.2 2.7 3 6 3s6-1.8 6-3v-4.5"/><path d="M22 9v6"/></svg>
+      </div>
+      <h1>Кабинет учителя</h1>
+      <p>Электронный журнал школы</p>
+    </div>
+    <label>Логин <input id="login" placeholder="petrov" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+    <label>Пароль <input id="password" type="password" placeholder="Ваш пароль" autocomplete="current-password"></label>
+    <div id="loginErr" class="err" role="alert"></div>
+    <button id="loginBtn" type="submit">Войти</button>
+    <p class="hint">Логин и пароль выдаёт администратор школы</p>
+  </form>
+
+  <section id="cabinet" hidden>
+    <div class="who">
+      <div class="avatar" id="avatar" aria-hidden="true"></div>
+      <div class="who-text"><b id="whoName"></b><span id="whoScope"></span></div>
+      <button id="logoutBtn" class="ghost" type="button">Выйти</button>
+    </div>
+    <div class="stub">
+      <p>Кабинет в разработке: здесь появятся ваши классы и форма постановки оценок.</p>
+      <p>Пока оценки можно ставить в <a href="index.html">общем журнале</a>.</p>
+    </div>
+  </section>
+
+  <p id="loading" class="msg">Загружаю…</p>
+</main>
+
+<script>
+  // Адрес базы и ПУБЛИЧНЫЙ ключ. Секретный ключ сюда не кладём никогда.
+  // Всё, что учитель может видеть и менять, определяют правила в самой базе, а не эта страница.
+  const SUPABASE_URL = "https://xjttipwrindzobwnbdnw.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_SxS_yTWNTwUx1_enK5q3RQ_HYaQOAwG";
+  const LOGIN_DOMAIN = "school.test";   // логин petrov = учётная запись petrov@school.test
+  const SESSION_KEY = "journal-session"; // тот же ключ, что в index.html: войдя здесь, в журнале входить не надо
+
+  const $ = id => document.getElementById(id);
+  let session = null;
+
+  function saveSession(s) {
+    session = s;
+    try { s ? localStorage.setItem(SESSION_KEY, JSON.stringify(s)) : localStorage.removeItem(SESSION_KEY); } catch {}
+  }
+  function loadSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+  }
+
+  async function auth(grant, body) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${grant}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error_description || data.msg || `код ${res.status}`), { status: res.status });
+    return { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: data.expires_at };
+  }
+
+  async function freshSession() {
+    if (session && session.expires_at - 60 < Date.now() / 1000) {
+      try { saveSession(await auth("refresh_token", { refresh_token: session.refresh_token })); }
+      catch { saveSession(null); }
+    }
+    return session;
+  }
+
+  async function myProfile() {
+    const s = await freshSession();
+    if (!s) throw Object.assign(new Error("нужно войти"), { status: 401 });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/my_profile`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}`, "Content-Type": "application/json" },
+      body: "{}"
+    });
+    if (!res.ok) throw Object.assign(new Error(`база ответила кодом ${res.status}`), { status: res.status });
+    return (await res.json())[0] || null;
+  }
+
+  function signOut() {
+    const s = session;
+    saveSession(null);
+    if (s) fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST", headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}` }
+    }).catch(() => {});
+  }
+
+  const initials = name => String(name).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("");
+
+  function showLogin(message = "", html = false) {
+    $("loading").hidden = true;
+    $("cabinet").hidden = true;
+    $("loginForm").hidden = false;
+    $("loginErr")[html ? "innerHTML" : "textContent"] = message;
+    $("login").focus();
+  }
+
+  function showCabinet(profile) {
+    $("loading").hidden = true;
+    $("loginForm").hidden = true;
+    $("avatar").textContent = initials(profile.full_name);
+    $("whoName").textContent = profile.full_name;
+    $("whoScope").textContent = `Учитель, предмет: ${profile.scope || "не указан"}`;
+    $("cabinet").hidden = false;
+  }
+
+  // Возвращает профиль учителя или null, если вошёл не учитель.
+  async function teacherProfile() {
+    const profile = await myProfile();
+    return profile && profile.role === "teacher" ? profile : null;
+  }
+
+  const NOT_TEACHER = 'Это кабинет для учителей. Родителям нужен <a href="index.html">вход в журнал</a>.';
+
+  $("loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const login = $("login").value.trim().toLowerCase();
+    const password = $("password").value;
+    if (!login || !password) return showLogin("Введите логин и пароль.");
+    const email = login.includes("@") ? login : `${login}@${LOGIN_DOMAIN}`;
+
+    $("loginBtn").disabled = true;
+    $("loginErr").textContent = "";
+    try {
+      saveSession(await auth("password", { email, password }));
+      const profile = await teacherProfile();
+      if (!profile) {
+        signOut();
+        return showLogin(NOT_TEACHER, true);
+      }
+      $("password").value = "";
+      showCabinet(profile);
+    } catch (err) {
+      if (err.status === 400) { saveSession(null); showLogin("Логин или пароль не подошли. Проверьте и повторите."); }
+      else if (err.status === undefined) { saveSession(null); showLogin("Не удалось связаться с сервером. Проверьте интернет и повторите."); }
+      else { signOut(); showLogin(`Не удалось войти: ${err.message}.`); }
+    } finally {
+      $("loginBtn").disabled = false;
+    }
+  });
+
+  $("logoutBtn").addEventListener("click", () => {
+    signOut();
+    $("password").value = "";
+    showLogin();
+  });
+
+  ["login", "password"].forEach(id => $(id).addEventListener("input", () => { $("loginErr").textContent = ""; }));
+
+  // При открытии: если уже вошли раньше, сразу кабинет (только для учителя).
+  (async function start() {
+    session = loadSession();
+    if (!session) return showLogin();
+    try {
+      const profile = await teacherProfile();
+      profile ? showCabinet(profile) : showLogin();
+    } catch (e) {
+      if (e.status === 401) { saveSession(null); showLogin("Время входа истекло, войдите снова."); }
+      else showLogin("Не удалось проверить вход. Войдите снова.");
+    }
+  })();
+</script>
+</body>
+</html>
