@@ -42,6 +42,12 @@
   .login label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
   .err { color: var(--danger); font-size: 14px; min-height: 1.3em; margin: 0; }
   .err a { font-weight: 600; }
+  .forgot { margin-top: -6px; }
+  button.link { height: auto; padding: 0; background: none; color: var(--accent); font-weight: 400; font-size: 13px;
+                text-decoration: underline; }
+  button.link:hover { background: none; color: var(--accent-hover); }
+  .forgot-info { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft);
+                 font-size: 13px; color: var(--text); }
   .hint { font-size: 12px; color: var(--muted); text-align: center; margin: 0; }
 
   .who { display: flex; align-items: center; gap: 12px; background: var(--card);
@@ -69,6 +75,10 @@
     </div>
     <label>Логин <input id="login" placeholder="petrov" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
     <label>Пароль <input id="password" type="password" placeholder="Ваш пароль" autocomplete="current-password"></label>
+    <div class="forgot">
+      <button id="forgotBtn" class="link" type="button" aria-expanded="false" aria-controls="forgotInfo">Забыли пароль?</button>
+      <p id="forgotInfo" class="forgot-info" hidden>Пароли выдаёт администратор школы. Сообщите ему свой логин, и он выдаст новый пароль.</p>
+    </div>
     <div id="loginErr" class="err" role="alert"></div>
     <button id="loginBtn" type="submit">Войти</button>
     <p class="hint">Логин и пароль выдаёт администратор школы</p>
@@ -205,6 +215,12 @@
     signOut();
     $("password").value = "";
     showLogin();
+  });
+
+  $("forgotBtn").addEventListener("click", () => {
+    const info = $("forgotInfo");
+    info.hidden = !info.hidden;
+    $("forgotBtn").setAttribute("aria-expanded", String(!info.hidden));
   });
 
   ["login", "password"].forEach(id => $(id).addEventListener("input", () => { $("loginErr").textContent = ""; }));
