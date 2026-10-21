@@ -65,7 +65,9 @@
     </div>
   </section>
 
-  <p id="loading" class="msg">Загружаю…</p>
+  <p id="loading" class="msg" role="status">Загружаю…</p>
+  <p id="retry" class="msg" hidden><button id="retryBtn" type="button">Повторить</button> <button id="retryOut" class="ghost" type="button">Выйти</button></p>
+  <noscript><p class="msg err">Для работы кабинета нужен включённый JavaScript.</p></noscript>
 </main>
 
 <script>
@@ -103,7 +105,7 @@
   async function freshSession() {
     if (session && session.expires_at - 60 < Date.now() / 1000) {
       try { saveSession(await auth("refresh_token", { refresh_token: session.refresh_token })); }
-      catch { saveSession(null); }
+      catch (e) { if (e.status === 400 || e.status === 401) saveSession(null); }
     }
     return session;
   }
@@ -123,7 +125,7 @@
   // Закрывает пропуск и на стороне базы, чтобы он нигде больше не работал.
   function serverLogout(s) {
     if (!s) return;
-    fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+    fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`, {
       method: "POST", keepalive: true,
       headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${s.access_token}` }
     }).catch(() => {});
@@ -133,6 +135,7 @@
   function showLogin(message = "") {
     $("loading").hidden = true;
     $("cabinetView").hidden = true;
+    $("retry").hidden = true;
     $("whoName").textContent = "";
     $("whoScope").textContent = "";
     $("loginForm").hidden = false;
@@ -144,9 +147,12 @@
     $("loginForm").hidden = true;
     $("cabinetView").hidden = true;
     $("loading").hidden = false;
+    $("loading").className = "msg";
     $("loading").textContent = "Загружаю…";
+    $("retry").hidden = true;
     try {
-      const profile = (await rpc("my_profile")).find(p => p.role === "teacher");
+      const rows = await rpc("my_profile");
+      const profile = Array.isArray(rows) ? rows.find(p => p.role === "teacher") : null;
       if (!profile) {
         // Вошёл не учитель (родитель или учётка без привязки): кабинет закрыт, пропуск закрываем.
         serverLogout(session);
@@ -159,8 +165,9 @@
       $("cabinetView").hidden = false;
     } catch (e) {
       if (e.status === 401) { saveSession(null); return showLogin("Время входа истекло, войдите снова."); }
-      $("loading").textContent = `Не удалось открыть кабинет: ${e.message}`;
+      $("loading").textContent = "Не удалось открыть кабинет. Проверьте связь и нажмите «Повторить».";
       $("loading").className = "msg err";
+      $("retry").hidden = false;
     }
   }
 
@@ -177,7 +184,9 @@
       await showCabinet();
     } catch (err) {
       // Одно и то же сообщение для неверного логина и неверного пароля.
-      $("loginErr").textContent = err.status === 400 ? "Неверный логин или пароль." : `Не удалось войти: ${err.message}`;
+      $("loginErr").textContent = err.status === 400 ? "Неверный логин или пароль."
+        : err.status === 429 ? "Слишком много попыток входа. Подождите немного и попробуйте снова."
+        : "Не удалось войти: нет связи с сервером. Попробуйте ещё раз.";
     } finally {
       $("loginBtn").disabled = false;
     }
@@ -189,6 +198,9 @@
     showLogin();
     serverLogout(s);
   });
+
+  $("retryBtn").addEventListener("click", showCabinet);
+  $("retryOut").addEventListener("click", () => $("logoutBtn").click());
 
   // Кнопка «Назад» может вернуть страницу из памяти браузера: заново проверяем, вошёл ли кто-то.
   function start() {
